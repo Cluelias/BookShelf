@@ -1,53 +1,60 @@
 package com.example.bookshelfapp
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import retrofit2.HttpException
-import kotlinx.coroutines.delay
 
 class BooksViewModel(private val repository: BooksRepository) : ViewModel() {
 
+    private companion object {
+        const val MAX_RETRY_ATTEMPTS = 5
+        const val DEFAULT_RETRY_DELAY_MS = 2000L
+    }
+
     private val _books = MutableLiveData<List<BookItem>>()
     val books: LiveData<List<BookItem>> get() = _books
-    private val maxRetryAttempts = 5
-    private val defaultRetryDelayMillis = 2000L
 
     fun searchBooks(query: String) {
         viewModelScope.launch {
-            var attempt = 0
-            while (attempt < maxRetryAttempts) {
-                try {
+            retrySearchBooks(query)
+        }
+    }
 
-                    val allBooks = repository.searchBooks(query) ?: emptyList()
+    private suspend fun retrySearchBooks(query: String) {
+        var attempt = 0
 
-                    _books.value = allBooks.take(10)
-                    return@launch
-                } catch (e: HttpException) {
-                    if (e.code() == 429) {
-                        attempt++
-
-                        val retryAfter = e.response()?.headers()?.get("Retry-After")
-                        val delayMillis = retryAfter?.toLongOrNull()?.times(1000)
-                            ?: (defaultRetryDelayMillis * attempt)
-
-                        Log.d("BooksViewModel", "Rate limit exceeded, retrying in $delayMillis ms. Attempt: $attempt")
-
-                        if (attempt < maxRetryAttempts) {
-                            delay(delayMillis)
-                        } else {
-                            _books.value = emptyList()
-                            return@launch
-                        }
-                    } else {
-                        _books.value = emptyList()
-                        return@launch
-                    }
+        while (attempt < MAX_RETRY_ATTEMPTS) {
+            try {
+                val fetchedBooks = repository.searchBooks(query) ?: emptyList()
+                _books.postValue(fetchedBooks.take(6))
+                return
+            } catch (exception: HttpException) {
+                if (exception.code() == 429) {
+                    attempt++
+                    handleRetryDelay(attempt, exception)
+                } else {
+                    handleFailure()
+                    return
                 }
             }
         }
+        handleFailure()
+    }
+
+    private suspend fun handleRetryDelay(attempt: Int, exception: HttpException) {
+        val retryAfterSeconds = exception.response()?.headers()?.get("Retry-After")?.toLongOrNull()
+        val delayDuration = retryAfterSeconds?.times(1000) ?: (DEFAULT_RETRY_DELAY_MS * attempt)
+
+        if (attempt < MAX_RETRY_ATTEMPTS) {
+            delay(delayDuration)
+        }
+    }
+
+    private fun handleFailure() {
+        _books.postValue(emptyList())
     }
 }

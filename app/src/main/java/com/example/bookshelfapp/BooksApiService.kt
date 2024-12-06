@@ -7,6 +7,6 @@ interface BooksApiService {
     @GET("volumes")
     suspend fun searchBooks(
         @Query("q") query: String,
-        @Query("maxResults") maxResults: Int = 10
+        @Query("maxResults") maxResults: Int = 6
     ): BookResponse
 }

@@ -1,7 +1,6 @@
 package com.example.bookshelfapp
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
@@ -10,6 +9,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 class MainActivity : AppCompatActivity() {
+
     private lateinit var binding: ActivityMainBinding
     private val viewModel: BooksViewModel by viewModels {
         val service = Retrofit.Builder()
@@ -17,22 +17,28 @@ class MainActivity : AppCompatActivity() {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(BooksApiService::class.java)
-        val repository = BooksRepository(service)
-        BooksViewModelFactory(repository)
+        BooksViewModelFactory(BooksRepository(service))
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        setupRecyclerView()
+        observeBooks()
+        viewModel.searchBooks("THE LORD OF THE RINGS SERIES")
+    }
+
+    private fun setupRecyclerView() {
         binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
+    }
+
+    private fun observeBooks() {
         viewModel.books.observe(this) { books ->
-            Log.d("MainActivity", "Books received: ${books.size}")
             if (books.isNotEmpty()) {
                 binding.recyclerView.adapter = BooksAdapter(books)
-            } else {
-                Log.d("MainActivity", "No books available to display.")
             }
         }
-        viewModel.searchBooks("THE LORD OF THE RINGS SERIES")
     }
 }
